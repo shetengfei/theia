@@ -17,7 +17,7 @@
 import { inject, injectable } from 'inversify';
 import { Command, CommandRegistry } from '../../common';
 import { Keybinding, KeybindingRegistry } from '../keybinding';
-import { QuickOpenModel, QuickOpenItem, QuickOpenMode } from './quick-open-model';
+import { QuickOpenModel, QuickOpenItem, QuickOpenMode, QuickOpenGroupItem, QuickOpenGroupItemOptions } from './quick-open-model';
 import { QuickOpenOptions } from './quick-open-service';
 import { QuickOpenContribution, QuickOpenHandlerRegistry, QuickOpenHandler } from './prefix-quick-open-service';
 import { ContextKeyService } from '../context-key-service';
@@ -51,15 +51,32 @@ export class QuickCommandService implements QuickOpenModel, QuickOpenHandler {
     init(): void {
         // let's compute the items here to do it in the context of the currently activeElement
         this.items = [];
-        const filteredAndSortedCommands = this.commands.commands.filter(a => a.label).sort((a, b) => Command.compareCommands(a, b));
-        for (const command of filteredAndSortedCommands) {
-            if (command.label) {
-                const contexts = this.contexts.get(command.id);
-                if (!contexts || contexts.some(when => this.contextKeyService.match(when))) {
-                    this.items.push(new CommandQuickOpenItem(command, this.commands, this.keybindings));
-                }
-            }
-        }
+        const recentCommands: Command[] = this.commands.recent;
+        const allCommands: Command[] = this.commands.commands;
+        const { recent, all } = this.getCommands(recentCommands, allCommands);
+        const filteredAndSortedCommands = this.getValidCommands(all)
+            .filter(a => a.label)
+            .sort((a, b) => Command.compareCommands(a, b));
+        this.items.push(
+            ...recent.map((command, index) =>
+                new CommandQuickOpenItem(
+                    command,
+                    this.commands,
+                    this.keybindings,
+                    {
+                        groupLabel: index === 0 ? 'recently used' : '',
+                        showBorder: false
+                    })),
+            ...filteredAndSortedCommands.map((command, index) =>
+                new CommandQuickOpenItem(
+                    command,
+                    this.commands,
+                    this.keybindings,
+                    {
+                        groupLabel: recent.length <= 0 ? '' : index === 0 ? 'other commands' : '',
+                        showBorder: recent.length <= 0 ? false : index === 0 ? true : false
+                    })),
+        );
     }
 
     public onType(lookFor: string, acceptor: (items: QuickOpenItem[]) => void): void {
@@ -74,9 +91,56 @@ export class QuickCommandService implements QuickOpenModel, QuickOpenHandler {
         return { fuzzyMatchLabel: true };
     }
 
+    /**
+     * Get the list of recently used commands, and all commands.
+     *
+     * @param recentCommands recently used commands.
+     * @param allCommands all available commands.
+     */
+    private getCommands(recentCommands: Command[], allCommands: Command[]): { recent: Command[], all: Command[] } {
+
+        // Add recently used items to the list.
+        const recent: Command[] = [];
+        recentCommands.forEach((r: Command) => {
+            const exist = [...allCommands].some((c: Command) => Command.equals(c, r));
+            if (exist) {
+                recent.push(r);
+            }
+        });
+
+        // Add all commands, which are currently not recently used.
+        const all: Command[] = [];
+        allCommands.forEach((a: Command) => {
+            const exist = [...recentCommands].some((c: Command) => Command.equals(c, a));
+            if (!exist) {
+                all.push(a);
+            }
+        });
+
+        return { recent, all };
+    }
+
+    /**
+     * Get the list of valid commands.
+     *
+     * @param commands the raw list of commands.
+     */
+    getValidCommands(commands: Command[]): Command[] {
+        const valid: Command[] = [];
+        commands.forEach((command: Command) => {
+            if (command.label) {
+                const contexts = this.contexts.get(command.id);
+                if (!contexts || contexts.some(when => this.contextKeyService.match(when))) {
+                    valid.push(command);
+                }
+            }
+        });
+        return valid;
+    }
+
 }
 
-export class CommandQuickOpenItem extends QuickOpenItem {
+export class CommandQuickOpenItem extends QuickOpenGroupItem {
 
     private activeElement: HTMLElement;
     private hidden: boolean;
@@ -84,9 +148,10 @@ export class CommandQuickOpenItem extends QuickOpenItem {
     constructor(
         protected readonly command: Command,
         protected readonly commands: CommandRegistry,
-        protected readonly keybindings: KeybindingRegistry
+        protected readonly keybindings: KeybindingRegistry,
+        protected readonly options: QuickOpenGroupItemOptions
     ) {
-        super();
+        super(options);
         this.activeElement = window.document.activeElement as HTMLElement;
         this.hidden = !this.commands.getActiveHandler(this.command.id);
     }

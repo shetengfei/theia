@@ -59,6 +59,17 @@ export namespace Command {
             return 0;
         }
     }
+
+    /**
+     * Determine if two commands are equal.
+     *
+     * @param a first command
+     * @param b second command
+     * @returns `true` if `a` and `b` are equal.
+     */
+    export function equals(a: Command, b: Command): boolean {
+        return (a.id === b.id && a.label === b.label);
+    }
 }
 
 /**
@@ -125,6 +136,9 @@ export class CommandRegistry implements CommandService {
 
     protected readonly _commands: { [id: string]: Command } = {};
     protected readonly _handlers: { [id: string]: CommandHandler[] } = {};
+
+    /** Recently used commands. */
+    protected _recent: Command[] = [];
 
     constructor(
         @inject(ContributionProvider) @named(CommandContribution)
@@ -235,14 +249,15 @@ export class CommandRegistry implements CommandService {
      * Reject if a command cannot be executed.
      */
     // tslint:disable-next-line:no-any
-    async executeCommand<T>(command: string, ...args: any[]): Promise<T | undefined> {
-        const handler = this.getActiveHandler(command, ...args);
+    async executeCommand<T>(commandId: string, ...args: any[]): Promise<T | undefined> {
+        const handler = this.getActiveHandler(commandId, ...args);
         if (handler) {
             const result = await handler.execute(...args);
+            this.addRecentCommand(commandId);
             return result;
         }
         const argsMessage = args && args.length > 0 ? ` (args: ${JSON.stringify(args)})` : '';
-        throw new Error(`The command '${command}' cannot be executed. There are no active handlers available for the command.${argsMessage}`);
+        throw new Error(`The command '${commandId}' cannot be executed. There are no active handlers available for the command.${argsMessage}`);
     }
 
     /**
@@ -318,5 +333,32 @@ export class CommandRegistry implements CommandService {
      */
     get commandIds(): string[] {
         return Object.keys(this._commands);
+    }
+
+    /**
+     * Get the list of recently used commands.
+     */
+    get recent(): Command[] {
+        return this._recent;
+    }
+
+    /**
+     * Add recent command.
+     *
+     * @param recent the recent command id, or array of recent command ids.
+     */
+    private addRecentCommand(recent: string | string[]): void {
+        if (Array.isArray(recent)) {
+            recent.forEach((id: string) => this.addRecentCommand(id));
+        } else {
+            const r = this.getCommand(recent);
+            if (r) {
+                const index = this._recent.findIndex((c: Command) => Command.equals(c, r));
+                if (index >= 0) {
+                    this._recent.splice(index, 1);
+                }
+                this._recent.unshift(r);
+            }
+        }
     }
 }
