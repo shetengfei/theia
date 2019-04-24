@@ -45,6 +45,10 @@ export namespace ElectronCommands {
         id: 'view.resetZoom',
         label: 'Reset Zoom'
     };
+    export const CLOSE_WINDOW: Command = {
+        id: 'close.window',
+        label: 'Close Window'
+    };
 }
 
 export namespace ElectronMenus {
@@ -54,6 +58,10 @@ export namespace ElectronMenus {
 
 export namespace ElectronMenus {
     export const HELP_TOGGLE = [...CommonMenus.HELP, 'z_toggle'];
+}
+
+export namespace ElectronMenus {
+    export const FILE_CLOSE = [...CommonMenus.FILE_CLOSE, 'window-close'];
 }
 
 @injectable()
@@ -145,6 +153,14 @@ export class ElectronMenuContribution implements FrontendApplicationContribution
                 }
             }
         });
+        registry.registerCommand(ElectronCommands.CLOSE_WINDOW, {
+            execute: () => {
+                const focusedWindow = electron.remote.getCurrentWindow();
+                if (focusedWindow) {
+                    window.close();
+                }
+            }
+        });
     }
 
     registerKeybindings(registry: KeybindingRegistry): void {
@@ -168,6 +184,10 @@ export class ElectronMenuContribution implements FrontendApplicationContribution
             {
                 command: ElectronCommands.RESET_ZOOM.id,
                 keybinding: 'ctrlcmd+0'
+            },
+            {
+                command: ElectronCommands.CLOSE_WINDOW.id,
+                keybinding: 'ctrlcmd+shift+w'
             }
         );
     }
@@ -193,6 +213,9 @@ export class ElectronMenuContribution implements FrontendApplicationContribution
         registry.registerMenuAction(ElectronMenus.VIEW_ZOOM, {
             commandId: ElectronCommands.RESET_ZOOM.id,
             order: 'z3'
+        });
+        registry.registerMenuAction(ElectronMenus.FILE_CLOSE, {
+            commandId: ElectronCommands.CLOSE_WINDOW.id,
         });
     }
 
